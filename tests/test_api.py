@@ -12,6 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 from backend.app import app
+from backend.db.database import SessionLocal
+from backend.db.models import ReportIteration
 
 c = TestClient(app)
 
@@ -40,6 +42,8 @@ def test_flow():
         "sources": [{"id": 1}],
         "warnings": [],
         "error": None,
+        "scores": [5, 8],
+        "revisions": 1,
     }
     with patch("backend.routes.research.generate_research", return_value=fake_ok):
         r = c.post("/research", json={"topic": "AI in healthcare"}, headers=h)
@@ -48,9 +52,17 @@ def test_flow():
     hist = c.get("/history", headers=h).json()["history"]
     assert len(hist) == 1
     saved = c.get(f"/history/{hist[0]['id']}", headers=h).json()["history"]
-    assert (
-        "## Sources" in saved["report"]
-    )  # sources persist in history with no DB change
+    assert "## Sources" in saved["report"]  # sources persist inside the saved report
+
+    # the critic's score for every round is stored in its own table
+    with SessionLocal() as db:
+        rows = db.query(ReportIteration).order_by(ReportIteration.round).all()
+        assert [(row.round, row.score) for row in rows] == [(1, 5), (2, 8)]
+
+    # deleting the report deletes its scores too
+    assert c.delete(f"/history/{hist[0]['id']}", headers=h).status_code == 200
+    with SessionLocal() as db:
+        assert db.query(ReportIteration).count() == 0
 
     # pipeline failure returns a clean message
     fake_fail = {"status": "failed", "error": "No search results found for this topic."}

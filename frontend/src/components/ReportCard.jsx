@@ -39,6 +39,11 @@ export default function ReportCard({ title, content }) {
             p: ({ children }) => <p style={styles.p}>{children}</p>,
             li: ({ children }) => <li style={styles.li}>{children}</li>,
             strong: ({ children }) => <strong style={styles.bold}>{children}</strong>,
+            a: ({ href, children }) => (
+              <a href={href} target="_blank" rel="noreferrer" style={styles.link}>
+                {children}
+              </a>
+            ),
             code: ({ children }) => <code style={styles.code}>{children}</code>,
             blockquote: ({ children }) => (
               <blockquote style={styles.quote}>{children}</blockquote>
@@ -95,6 +100,7 @@ const styles = {
   p: { fontSize: "16px", lineHeight: "1.95", color: "#E6E6E6", marginBottom: "18px" },
   li: { marginBottom: "10px", color: "#E6E6E6", lineHeight: "1.8" },
   bold: { color: "#ffffff", fontWeight: "700" },
+  link: { color: "#e3a0b8", textDecoration: "underline" },
   code: {
     background: "rgba(255,255,255,0.06)",
     padding: "3px 8px",

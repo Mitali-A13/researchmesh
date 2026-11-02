@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from backend.db.models import ChatHistory
+from backend.db.models import ChatHistory, ReportIteration
 from backend.routes.deps import get_current_user, get_db, get_db_user
 from backend.schemas.research import ResearchRequest
 from backend.services.pipeline_service import generate_research
@@ -33,6 +33,12 @@ def research(
         report=result["report"],
         feedback=result["feedback"],
     )
+
+    # Save the critic's score for every round
+    new_history.iterations = [
+        ReportIteration(round=number, score=score)
+        for number, score in enumerate(result.get("scores", []), start=1)
+    ]
 
     db.add(new_history)
     db.commit()

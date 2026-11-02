@@ -8,6 +8,7 @@ from unittest.mock import patch
 import backend.sources as sources_mod
 import backend.pipeline as pipeline_mod
 import backend.custom_tools as tools
+from backend.agents import Critique
 
 FOUND = [
     {
@@ -78,21 +79,40 @@ def test_no_results():
 
 class FakeChain:
     def __init__(self, out):
-        self.out, self.seen = out, None
+        self.out, self.seen, self.calls = out, None, 0
 
     def invoke(self, x):
-        self.seen = x
+        self.seen, self.calls = x, self.calls + 1
         return self.out
+
+
+def make_critique(score):
+    return Critique(
+        score=score,
+        strengths=["clear structure"],
+        improvements=["add depth"],
+        verdict="solid",
+    )
 
 
 def test_full_pipeline_with_fake_llm():
     writer = FakeChain("## Introduction\nClaim A [1]. Claim B [2][4].")
-    critic = FakeChain("Score: 7/10")
+    reviser = FakeChain("## Introduction\nImproved claim [1]. Another [2].")
+    critic_scores = iter([6, 9])
+
+    class Critic:
+        seen = None
+
+        def invoke(self, x):
+            Critic.seen = x
+            return make_critique(next(critic_scores))
+
     with (
         patch.object(sources_mod, "search_web", return_value=FOUND),
         patch.object(sources_mod, "fetch_page", side_effect=fake_fetch),
         patch.object(pipeline_mod, "writer_chain", writer),
-        patch.object(pipeline_mod, "critic_chain", critic),
+        patch.object(pipeline_mod, "reviser_chain", reviser),
+        patch.object(pipeline_mod, "critic_chain", Critic()),
     ):
         state = pipeline_mod.run_research_pipeline("AI in healthcare")
     assert state["status"] == "success", state["error"]
@@ -101,14 +121,18 @@ def test_full_pipeline_with_fake_llm():
         "[1] Article 1" in writer.seen["research"]
         and "https://example.com/4" in writer.seen["research"]
     )
-    # report ends with a code-generated Sources section containing only real URLs
-    assert "## Sources" in state["report"]
+    # the loop ran once: first draft scored 6, revision scored 9
+    assert reviser.calls == 1 and state["scores"] == [6, 9] and state["revisions"] == 1
+    # the report is the improved draft, with a code-generated Sources section of real URLs
+    assert "Improved claim" in state["report"] and "## Sources" in state["report"]
     for i in range(1, 6):
         assert f"https://example.com/{i}" in state["report"]
     assert "_(snippet only)_" in state["report"]
-    # critic reviewed the final report (including sources)
-    assert "## Sources" in critic.seen["report"]
-    # frontend payload: no giant text field, has ids
+    # the critic could see the Sources list
+    assert "## Sources" in Critic.seen["report"]
+    # feedback card shows the real score path
+    assert "Score: 9/10" in state["feedback"] and "6 → 9" in state["feedback"]
+    # frontend payload: no giant text field
     assert all("text" not in s for s in state["sources"])
     assert len(state["warnings"]) == 2
 
