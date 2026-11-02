@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export default function ReportCard({ title, content }) {
   function copyText() {
@@ -32,6 +33,7 @@ export default function ReportCard({ title, content }) {
         style={styles.reader}
       >
         <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
           components={{
             h1: ({ children }) => <h1 style={styles.h1}>{children}</h1>,
             h2: ({ children }) => <h2 style={styles.h2}>{children}</h2>,
@@ -48,6 +50,8 @@ export default function ReportCard({ title, content }) {
             blockquote: ({ children }) => (
               <blockquote style={styles.quote}>{children}</blockquote>
             ),
+            th: ({ children }) => <th style={styles.th}>{children}</th>,
+            td: ({ children }) => <td style={styles.td}>{children}</td>,
             table: ({ children }) => (
               <div style={styles.tableWrap}>
                 <table style={styles.table}>{children}</table>
@@ -115,4 +119,18 @@ const styles = {
   },
   tableWrap: { overflowX: "auto", margin: "20px 0" },
   table: { width: "100%", borderCollapse: "collapse", color: "white" },
+  th: {
+    textAlign: "left",
+    padding: "10px 12px",
+    borderBottom: "1px solid rgba(255,255,255,0.18)",
+    color: "#ffffff",
+    fontWeight: "700",
+  },
+  td: {
+    padding: "10px 12px",
+    borderBottom: "1px solid rgba(255,255,255,0.06)",
+    color: "#E6E6E6",
+    verticalAlign: "top",
+    lineHeight: "1.6",
+  },
 };
