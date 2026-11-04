@@ -1,6 +1,8 @@
+import os
+
 from dotenv import load_dotenv
 
-from backend.agents import critic_chain, reviser_chain, writer_chain
+from backend.agents import critic_chain, reviser_chain, verifier_chain, writer_chain
 from backend.graph import build_graph, run_graph
 from backend.sources import (
     format_sources_for_prompt,
@@ -8,8 +10,13 @@ from backend.sources import (
     gather_sources,
     public_view,
 )
+from backend.verify import format_verification, verify_report
 
 load_dotenv()
+
+
+def _ai_fact_check_enabled() -> bool:
+    return os.getenv("VERIFY_WITH_LLM", "true").lower() in ("1", "true", "yes", "on")
 
 
 def _format_feedback(result: dict) -> str:
@@ -23,7 +30,7 @@ def _format_feedback(result: dict) -> str:
 
     if len(scores) > 1:
         path = " → ".join(str(s) for s in scores)
-        lines += [f"Revision rounds: {result.get('revisions', 0)} (scores: {path})", ""]
+        lines += [f"Review rounds: {len(scores)} (scores: {path})", ""]
 
     lines += ["Strengths:", ""]
     lines += [f"- {point}" for point in critique.strengths]
@@ -40,6 +47,7 @@ def run_research_pipeline(topic: str) -> dict:
         "warnings": [],
         "scores": [],
         "revisions": 0,
+        "verification": None,
         "report": "",
         "feedback": "",
         "error": None,
@@ -66,6 +74,16 @@ def run_research_pipeline(topic: str) -> dict:
         state["scores"] = result.get("scores", [])
         state["revisions"] = result.get("revisions", 0)
         state["warnings"] += result.get("notes", [])
+
+        # 4. Citation check (never allowed to break the report)
+        try:
+            chain = verifier_chain if _ai_fact_check_enabled() else None
+            verification = verify_report(body, sources, chain)
+            state["verification"] = verification
+            state["feedback"] += "\n\n" + format_verification(verification)
+        except Exception as exc:
+            state["warnings"].append(f"Citation check failed: {str(exc)[:120]}")
+
         state["status"] = "success"
         return state
 
