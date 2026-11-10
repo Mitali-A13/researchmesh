@@ -1,0 +1,15 @@
+# One topic per line. Lines starting with # are ignored.
+# Mix of topics that need specific facts/figures and topics that are more conceptual.
+
+Cybersecurity threats in the age of generative AI: risks, attacks and defenses
+Carbon capture and storage: technology, costs and scalability
+How CRISPR-based therapy for sickle cell disease works and what it costs
+Effects of remote and hybrid work on employee productivity
+Health effects of microplastics in humans
+Small modular nuclear reactors: promises, costs and risks
+Adoption of Rust in systems programming and its safety benefits
+GLP-1 weight-loss drugs: effectiveness, side effects and access
+Growth of UPI digital payments in India
+Progress in quantum error correction
+Economics of vertical farming
+Obligations for general-purpose AI models under the EU AI Act

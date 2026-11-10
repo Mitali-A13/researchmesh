@@ -40,7 +40,12 @@ def _format_feedback(result: dict) -> str:
     return "\n".join(lines)
 
 
-def run_research_pipeline(topic: str) -> dict:
+def run_research_pipeline(topic: str, sources: list[dict] | None = None) -> dict:
+    """Run the whole pipeline.
+
+    `sources` is only for the evaluation: it hands in a ready-made source list so
+    that every setup is compared on the same pages. The app never passes it.
+    """
     state = {
         "topic": topic,
         "sources": [],
@@ -56,7 +61,10 @@ def run_research_pipeline(topic: str) -> dict:
 
     try:
         # 1. Search + read pages (plain code, pages are read in parallel)
-        sources, warnings = gather_sources(topic)
+        if sources is None:
+            sources, warnings = gather_sources(topic)
+        else:
+            warnings = []
         state["sources"] = public_view(sources)
         state["warnings"] = list(warnings)
 

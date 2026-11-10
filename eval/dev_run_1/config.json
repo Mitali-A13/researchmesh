@@ -1,0 +1,10 @@
+{
+  "writer": "groq/openai/gpt-oss-120b",
+  "judge": "openrouter/nvidia/nemotron-3-ultra-550b-a55b:free",
+  "max_sources": 3,
+  "max_page_chars": 2500,
+  "target_score": 8,
+  "max_revisions": 2,
+  "max_claims_judged": 60,
+  "created": "2026-11-06 15:48"
+}
