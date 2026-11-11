@@ -16,3 +16,5 @@ python-multipart==0.0.20
 email-validator==2.3.0
 psycopg2-binary==2.9.10
 langgraph==1.1.10
+langchain-groq
+langchain-google-genai
