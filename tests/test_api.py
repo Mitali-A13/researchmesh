@@ -4,7 +4,7 @@ _db = os.path.join(tempfile.mkdtemp(), "test.db")
 os.environ.update(
     MISTRAL_API_KEY="d",
     TAVILY_API_KEY="d",
-    SECRET_KEY="test-secret",
+    SECRET_KEY="test-secret-key-for-pytest-1234",
     DATABASE_URL=f"sqlite:///{_db}",
 )
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

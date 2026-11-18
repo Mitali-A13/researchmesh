@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ResearchRequest(BaseModel):
@@ -8,6 +8,16 @@ class ResearchRequest(BaseModel):
         max_length=300,
         description="Research topic entered by the user",
     )
+
+    @field_validator("topic")
+    @classmethod
+    def clean_topic(cls, value: str) -> str:
+        value = " ".join(value.split())
+
+        if len(value) < 3:
+            raise ValueError("Topic must have at least 3 characters.")
+
+        return value
 
 
 class ResearchResponse(BaseModel):

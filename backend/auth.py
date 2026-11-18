@@ -6,7 +6,19 @@ from passlib.context import CryptContext
 
 load_dotenv()
 
-SECRET_KEY = os.getenv("SECRET_KEY")
+
+def validate_secret_key(value):
+    """Ensure the application has a sufficiently long secret key."""
+    if not value or len(value) < 16:
+        raise RuntimeError(
+            "SECRET_KEY is missing or too short (needs at least 16 characters). "
+            "Set a long random value in .env, for example: openssl rand -hex 32"
+        )
+
+    return value
+
+
+SECRET_KEY = validate_secret_key(os.getenv("SECRET_KEY"))
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
