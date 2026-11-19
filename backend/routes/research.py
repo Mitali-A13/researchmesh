@@ -1,62 +1,60 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from backend.db.models import ChatHistory, ReportCheck, ReportIteration
+from backend.db.models import ResearchJob
 from backend.routes.deps import get_current_user, get_db, get_db_user
 from backend.schemas.research import ResearchRequest
-from backend.services.pipeline_service import generate_research
+from backend.services.jobs import (
+    LimitReached,
+    check_limits,
+    create_job,
+    job_to_dict,
+    submit_job,
+)
 
 router = APIRouter(tags=["Research"])
 
 
-# Main pipeline route
-@router.post("/research")
-def research(
+@router.post("/research", status_code=202)
+def start_research(
     data: ResearchRequest,
     current_user: dict = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    topic = data.topic.strip()
-
-    result = generate_research(topic)
-
-    if result["status"] == "failed":
-        raise HTTPException(status_code=500, detail=result["error"])
-
-    # Get current DB user
+    """Start a report in the background and return a job id straight away."""
     user = get_db_user(current_user, db)
 
-    # Save history (the report already contains its numbered Sources list)
-    new_history = ChatHistory(
-        user_id=user.id,
-        topic=topic,
-        report=result["report"],
-        feedback=result["feedback"],
+    try:
+        check_limits(db, user.id)
+    except LimitReached as limit:
+        raise HTTPException(status_code=limit.status_code, detail=limit.message)
+
+    job = create_job(db, user.id, data.topic)
+    submit_job(job.id)
+    return {"success": True, "job": job_to_dict(job)}
+
+
+@router.get("/research/jobs/{job_id}")
+def get_research_job(
+    job_id: str,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Status of one job. Only its owner can see it. When it is completed the
+    response also carries the finished result in `data`."""
+    user = get_db_user(current_user, db)
+
+    job = (
+        db.query(ResearchJob)
+        .filter(ResearchJob.id == job_id, ResearchJob.user_id == user.id)
+        .first()
     )
-    # Save the critic's score for every round
-    new_history.iterations = [
-        ReportIteration(round=number, score=score)
-        for number, score in enumerate(result.get("scores", []), start=1)
-    ]
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
 
-    # Save the citation-check numbers
-    verification = result.get("verification")
-    if verification:
-        new_history.check = ReportCheck(
-            claims_total=verification["claims_total"],
-            checked=verification["checked"],
-            supported=verification["supported"],
-            partial=verification["partial"],
-            unsupported=verification["unsupported"],
-            uncited_sentences=verification["uncited_sentences"],
-            invalid_citations=len(verification["invalid_citations"]),
-            unused_sources=len(verification["unused_sources"]),
-            figures_not_found=verification["figures_not_found"],
-            llm_used=verification["llm_used"],
-        )
-
-    db.add(new_history)
-    db.commit()
-    db.refresh(new_history)
-
-    return {"success": True, "data": result}
+    response = {"success": True, "job": job_to_dict(job)}
+    if job.status == "completed" and job.result_json:
+        response["data"] = json.loads(job.result_json)
+    return response

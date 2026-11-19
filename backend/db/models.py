@@ -102,3 +102,34 @@ class ReportCheck(Base):
     llm_used = Column(Boolean, nullable=False, default=False)
 
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ResearchJob(Base):
+    """One research request. The pipeline runs in the background and the app
+    polls this row: queued -> running -> completed (or failed)."""
+
+    __tablename__ = "research_jobs"
+
+    id = Column(String(32), primary_key=True)  # random hex, not a guessable counter
+
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+
+    topic = Column(String, nullable=False)
+
+    status = Column(String(20), nullable=False, default="queued", index=True)
+
+    stage = Column(String(100), nullable=True)  # what is happening right now
+
+    error = Column(Text, nullable=True)
+
+    # the saved report; a plain number (no foreign key) so deleting a report
+    # from the history never fails because a job still points at it
+    history_id = Column(Integer, nullable=True)
+
+    result_json = Column(Text, nullable=True)  # the full result the app shows
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    started_at = Column(DateTime, nullable=True)
+
+    finished_at = Column(DateTime, nullable=True)

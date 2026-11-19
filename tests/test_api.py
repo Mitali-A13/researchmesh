@@ -1,4 +1,4 @@
-import os, sys, tempfile
+import os, sys, tempfile, time
 
 _db = os.path.join(tempfile.mkdtemp(), "test.db")
 os.environ.update(
@@ -16,6 +16,25 @@ from backend.db.database import SessionLocal
 from backend.db.models import ReportCheck, ReportIteration
 
 c = TestClient(app)
+
+
+def wait_for_job(job_id, headers, timeout=10):
+    """Poll the job like the frontend does, until it is completed or failed."""
+    end = time.time() + timeout
+    while time.time() < end:
+        body = c.get(f"/research/jobs/{job_id}", headers=headers).json()
+        if body["job"]["status"] in ("completed", "failed"):
+            return body
+        time.sleep(0.05)
+    raise AssertionError("the job did not finish in time")
+
+
+def run_research(topic, fake, headers):
+    """Start a report (the pipeline is replaced by `fake`) and wait for it."""
+    with patch("backend.services.jobs.generate_research", return_value=fake):
+        r = c.post("/research", json={"topic": topic}, headers=headers)
+        assert r.status_code == 202, r.text
+        return r, wait_for_job(r.json()["job"]["id"], headers)
 
 
 def test_flow():
@@ -60,22 +79,30 @@ def test_flow():
             "notes": [],
         },
     }
-    with patch("backend.routes.research.generate_research", return_value=fake_ok):
-        r = c.post("/research", json={"topic": "AI in healthcare"}, headers=h)
-    assert r.status_code == 200 and r.json()["data"]["sources"] == [{"id": 1}]
+    r, body = run_research("AI in healthcare", fake_ok, h)
+    assert body["job"]["status"] == "completed" and body["data"]["sources"] == [
+        {"id": 1}
+    ]
 
     hist = c.get("/history", headers=h).json()["history"]
     assert len(hist) == 1
-    saved = c.get(f"/history/{hist[0]['id']}", headers=h).json()["history"]
+    assert body["job"]["history_id"] == hist[0]["id"]
+    history_id = hist[0]["id"]
+    saved = c.get(f"/history/{history_id}", headers=h).json()["history"]
     assert "## Sources" in saved["report"]  # sources persist inside the saved report
 
     # the critic's score for every round is stored in its own table
     with SessionLocal() as db:
-        rows = db.query(ReportIteration).order_by(ReportIteration.round).all()
+        rows = (
+            db.query(ReportIteration)
+            .filter(ReportIteration.history_id == history_id)
+            .order_by(ReportIteration.round)
+            .all()
+        )
         assert [(row.round, row.score) for row in rows] == [(1, 5), (2, 8)]
 
         # the citation-check numbers are stored too
-        check = db.query(ReportCheck).one()
+        check = db.query(ReportCheck).filter(ReportCheck.history_id == history_id).one()
         assert (check.claims_total, check.checked, check.supported) == (12, 10, 8)
         assert (check.partial, check.unsupported, check.uncited_sentences) == (1, 1, 3)
         assert (
@@ -86,26 +113,26 @@ def test_flow():
         assert check.llm_used is True
 
     # deleting the report deletes its scores and its check too
-    assert c.delete(f"/history/{hist[0]['id']}", headers=h).status_code == 200
+    assert c.delete(f"/history/{history_id}", headers=h).status_code == 200
     with SessionLocal() as db:
-        assert db.query(ReportIteration).count() == 0
-        assert db.query(ReportCheck).count() == 0
+        assert db.query(ReportIteration).filter_by(history_id=history_id).count() == 0
+        assert db.query(ReportCheck).filter_by(history_id=history_id).count() == 0
 
     # a report without verification data still saves fine
     fake_no_check = {**fake_ok, "verification": None}
-    with patch("backend.routes.research.generate_research", return_value=fake_no_check):
-        assert (
-            c.post("/research", json={"topic": "no check topic"}, headers=h).status_code
-            == 200
-        )
+    _, body = run_research("no check topic", fake_no_check, h)
+    assert body["job"]["status"] == "completed"
     with SessionLocal() as db:
-        assert db.query(ReportCheck).count() == 0
+        assert (
+            db.query(ReportCheck)
+            .filter_by(history_id=body["job"]["history_id"])
+            .count()
+            == 0
+        )
 
-    # pipeline failure returns a clean message
+    # pipeline failure ends as a failed job with a clean message
     fake_fail = {"status": "failed", "error": "No search results found for this topic."}
-    with patch("backend.routes.research.generate_research", return_value=fake_fail):
-        r = c.post("/research", json={"topic": "zzzz qqqq"}, headers=h)
-    assert (
-        r.status_code == 500
-        and r.json()["detail"] == "No search results found for this topic."
-    )
+    _, body = run_research("zzzz qqqq", fake_fail, h)
+    assert body["job"]["status"] == "failed"
+    assert body["job"]["error"] == "No search results found for this topic."
+    assert "data" not in body
