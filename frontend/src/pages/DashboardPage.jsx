@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 
@@ -16,6 +17,7 @@ export default function DashboardPage() {
   const [user, setUser] = useState(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const [loadingReport, setLoadingReport] = useState(false);
+  const [stage, setStage] = useState("");
   const [topic, setTopic] = useState("");
   const [report, setReport] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -23,9 +25,17 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
   const [collapsed, setCollapsed] = useState(false);
 
+  // Stop polling when the page is left.
+  const pollingRef = useRef(true);
+
   useEffect(() => {
+    pollingRef.current = true;
     fetchUser();
     fetchHistory();
+
+    return () => {
+      pollingRef.current = false;
+    };
   }, []);
 
   async function fetchUser() {
@@ -45,24 +55,82 @@ export default function DashboardPage() {
     setHistory(res.data.history);
   }
 
+  function pause(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  // Poll the background job every 2 seconds.
+  async function waitForJob(jobId) {
+    let missedChecks = 0;
+
+    while (pollingRef.current) {
+      let body;
+
+      try {
+        const res = await api.get(`/research/jobs/${jobId}`);
+        body = res.data;
+        missedChecks = 0;
+      } catch (err) {
+        // Allow a few temporary network failures.
+        if (err.response || ++missedChecks >= 3) throw err;
+
+        await pause(2000);
+        continue;
+      }
+
+      setStage(body.job.stage || "Working...");
+
+      if (body.job.status === "completed") {
+        return body.data;
+      }
+
+      if (body.job.status === "failed") {
+        throw new Error(body.job.error || "Failed to generate report");
+      }
+
+      await pause(2000);
+    }
+
+    return null;
+  }
+
+  function errorText(err) {
+    const detail = err.response?.data?.detail;
+
+    if (typeof detail === "string") return detail;
+
+    if (Array.isArray(detail)) {
+      return "Please enter a valid topic (3 to 300 characters).";
+    }
+
+    return err.message || "Failed to generate report";
+  }
+
   async function handleResearch() {
-    if (!topic.trim()) return;
+    if (!topic.trim() || loadingReport) return;
 
     try {
       setLoadingReport(true);
       setError("");
       setReport("");
       setFeedback("");
+      setStage("Starting...");
 
       const res = await api.post("/research", { topic });
+      const data = await waitForJob(res.data.job.id);
 
-      setReport(res.data.data.report);
-      setFeedback(res.data.data.feedback);
-      fetchHistory();
+      if (data) {
+        setReport(data.report);
+        setFeedback(data.feedback);
+        fetchHistory();
+      }
     } catch (err) {
-      setError(err.response?.data?.detail || "Failed to generate report");
+      setError(errorText(err));
     } finally {
-      setLoadingReport(false);
+      if (pollingRef.current) {
+        setLoadingReport(false);
+        setStage("");
+      }
     }
   }
 
@@ -118,18 +186,28 @@ export default function DashboardPage() {
             style={styles.textarea}
           />
 
-          <button style={styles.button} onClick={handleResearch}>
+          <button
+            style={{ ...styles.button, opacity: loadingReport ? 0.6 : 1 }}
+            onClick={handleResearch}
+            disabled={loadingReport}
+          >
             {loadingReport ? "Generating..." : "Generate Research Report"}
           </button>
 
-          {loadingReport && <Loader />}
+          {loadingReport && (
+            <Loader text={stage ? `${stage}...` : undefined} />
+          )}
 
           {error && <p style={styles.error}>{error}</p>}
         </motion.section>
 
-        {report && <ReportCard title="Research Report" content={report} />}
+        {report && (
+          <ReportCard title="Research Report" content={report} />
+        )}
 
-        {feedback && <ReportCard title="Critique Feedback" content={feedback} />}
+        {feedback && (
+          <ReportCard title="Critique Feedback" content={feedback} />
+        )}
       </main>
     </div>
   );
@@ -137,10 +215,23 @@ export default function DashboardPage() {
 
 const styles = {
   page: { display: "flex", minHeight: "100vh" },
-  main: { flex: 1, padding: "18px 24px", maxWidth: "1320px", margin: "0 auto" },
+  main: {
+    flex: 1,
+    padding: "18px 24px",
+    maxWidth: "1320px",
+    margin: "0 auto",
+  },
   hero: { maxWidth: "980px", margin: "0 auto" },
-  heading: { fontSize: "44px", marginBottom: "8px", lineHeight: "1.1" },
-  sub: { fontSize: "15px", color: "#9a9a9a", marginBottom: "18px" },
+  heading: {
+    fontSize: "44px",
+    marginBottom: "8px",
+    lineHeight: "1.1",
+  },
+  sub: {
+    fontSize: "15px",
+    color: "#9a9a9a",
+    marginBottom: "18px",
+  },
   textarea: {
     width: "100%",
     minHeight: "140px",
