@@ -12,7 +12,8 @@ from backend.routes.research import router as research_router
 from backend.services.jobs import fail_stale_jobs
 
 # create DB tables
-Base.metadata.create_all(bind=engine)
+if engine.dialect.name == "sqlite":
+    Base.metadata.create_all(bind=engine)
 
 logger = logging.getLogger("thinkmesh")
 

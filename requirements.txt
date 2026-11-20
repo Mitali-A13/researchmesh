@@ -1,7 +1,7 @@
 beautifulsoup4==4.14.3
 fastapi==0.136.1
 langchain==1.2.15
-langchain-core==1.3.2
+langchain-core==1.7.6
 langchain-mistralai==1.1.2
 bcrypt==4.0.1
 passlib==1.7.4
@@ -16,5 +16,6 @@ python-multipart==0.0.20
 email-validator==2.3.0
 psycopg2-binary==2.9.10
 langgraph==1.1.10
-langchain-groq
-langchain-google-genai
+langchain-groq==1.1.3
+langchain-google-genai==4.4.2
+alembic==1.20.1

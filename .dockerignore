@@ -1,0 +1,15 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+*.db
+.git/
+.github/
+.vscode/
+.idea/
+node_modules/
+eval_v2_dev/
+eval_v2_dev_run1/
